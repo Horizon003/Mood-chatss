@@ -881,7 +881,7 @@ const CONFIG = {
     appId: '1:196346161497:web:baab4b0b87b94037f64448',
     measurementId: 'G-D8GJNEL69N'
   },
-  FIREBASE_VAPID_KEY: 'HeZ-qYuCiEcHLbGTPPVzlpIeRczK24BYkDOwKLzgQh0',
+  FIREBASE_VAPID_KEY: 'BNgqgjJX5ku4sEoYoQoDXmiUoakSVFEgO-QVYkbScHWGxuQ3qTEOKt3dV6GXAtGf20INugnMU0OVHyKYnJ9WEcw',
   CLOUDINARY_CLOUD_NAME: 'djlt2chgd',
   CLOUDINARY_UPLOAD_PRESET: 'moodchat_media_unsigned'
 };
@@ -1080,18 +1080,75 @@ async function afterLogin(){
   if('Notification' in window && Notification.permission==='granted') initPush(true);
 }
 
+function clearStoredSupabaseSession(){
+  // Supabase normally removes its own session during signOut(). This is a
+  // local fallback so logout still works if the network or presence cleanup fails.
+  for(const storage of [window.localStorage, window.sessionStorage]){
+    try{
+      const keys=[];
+      for(let i=0;i<storage.length;i++) keys.push(storage.key(i));
+      keys.filter(Boolean).forEach(key=>{
+        if((key.startsWith('sb-') && key.includes('auth-token')) || key==='supabase.auth.token'){
+          storage.removeItem(key);
+        }
+      });
+    }catch{}
+  }
+}
+
+let logoutInProgress=false;
+
+function settleWithin(promise, milliseconds){
+  return Promise.race([
+    Promise.resolve(promise),
+    new Promise(resolve=>setTimeout(resolve,milliseconds))
+  ]);
+}
+
 window.logout = async function(){
+  if(logoutInProgress) return;
+  logoutInProgress=true;
   showLoader('Signing out…');
+  const uid=ME?.uid||null;
+
+  // Stop all live listeners first so the logged-in UI cannot be drawn again.
+  Object.keys(unsub).forEach(key=>{
+    try{ if(typeof unsub[key]==='function') unsub[key](); }catch{}
+    delete unsub[key];
+  });
+
+  // Try to mark the account offline and remove this device's push token,
+  // but never let a slow network trap the user on the Settings screen.
+  await settleWithin(Promise.allSettled([
+    uid ? rtSet(rtRef(rtdb,`presence/${uid}`), {
+      online:false,
+      lastSeen:rtServerTimestamp()
+    }) : Promise.resolve(),
+    unregisterPushDevice()
+  ]), 2500);
+
+  // Supabase sign-out can occasionally stall on mobile networks. The local
+  // session is cleared below regardless, so logout always completes.
   try{
-    if(ME) await rtSet(rtRef(rtdb,`presence/${ME.uid}`), { online:false, lastSeen:rtServerTimestamp() });
-    await unregisterPushDevice();
-    Object.values(unsub).forEach(u=>{try{u()}catch{}});
-    await supa.auth.signOut();
-    localStorage.removeItem('mc_no_remember');
-    ME=null; activeChat=null;
-    hideLoader();
-    go('splash');
-  }catch(e){ hideLoader(); toast(e.message); }
+    await settleWithin(supa.auth.signOut({scope:'local'}), 2500);
+  }catch(e){
+    console.warn('Supabase sign out warning',e);
+  }
+
+  clearStoredSupabaseSession();
+  localStorage.removeItem('mc_no_remember');
+  localStorage.removeItem('mc_fcm_token');
+  localStorage.removeItem('mc_push_device_id');
+  pendingEmail='';
+  ME=null;
+  activeChat=null;
+  presenceState={};
+  pendingNotificationChatId='';
+  notificationChatOpened=false;
+
+  // Reload the app from a clean state. This also clears any transient module
+  // state left by chats, calls, games, or notification listeners.
+  window.location.replace(window.location.pathname);
 };
 
 /* auto-login / remember-me */
