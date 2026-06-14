@@ -1,0 +1,30 @@
+MOODCHAT — GITHUB + NETLIFY
+===========================
+
+1) Is folder ke andar jitni bhi files/folders hain sab GitHub repository mein upload karo.
+   Folder structure change na karna.
+
+2) Netlify mein:
+   Add new project > Import an existing project > GitHub > apni repository select karo.
+
+3) Build settings manually change karne ki zaroorat nahi:
+   Publish directory: public
+   Functions directory: netlify/functions
+
+4) Firebase private key GitHub par upload NAHI karni.
+
+5) Firebase Console mein:
+   moodchat-f13a0 > Project settings > Service accounts
+   > Generate new private key
+
+6) Downloaded JSON ka poora content Netlify mein environment variable bana kar paste karo:
+
+   FIREBASE_SERVICE_ACCOUNT_JSON
+
+7) Netlify par Trigger deploy karo.
+
+8) iPhone Safari:
+   Site open > Share > Add to Home Screen > icon se app open
+   > Settings > Notifications > Allow
+
+Bas. Firebase Blaze ya Firebase Cloud Functions ki zaroorat nahi.
